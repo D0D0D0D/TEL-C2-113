@@ -1,0 +1,79 @@
+# Runtime parameters — loaded by AgentRegistry, passed as Graph(config=...).
+# This is a SEPARATE file from config/agent.yaml (the static manifest): agent.yaml
+# is AgentRegistry's discovery entry point, this file is the agent's own runtime
+# config, keyed by whatever your Graph/node code reads via self.config.get(...).
+# agent.yaml is the static manifest; every runtime parameter lives here.
+#
+# Every key below is a design value declared in docs/02_design.md. They are initial
+# values a template adopter tunes for their own environment — none of them is
+# hard-coded in src/.
+
+max_retry: 3
+timeout_s: 30
+
+# No in-graph HITL: the agent never suspends. Declared explicitly (not commented out)
+# so PB-7's conditional skip and the checkpointer decision are both readable from
+# config, not inferred from absence. docs/01_proposal.md records the 4-question test.
+memory_enabled: false
+hitl:
+  enabled: false
+
+# --- Request contract defaults (injected by the entry adapter when `context` is absent) ---
+# The reference timezone is fixed ONCE at the adapter boundary; no node calls
+# datetime.now()/date.today(). A UTC-hosted container must produce the same result
+# as a JST-hosted one.
+default_business_timezone: "Asia/Tokyo"
+default_counterpart_label: "unspecified"
+
+# --- Input limits (quality gate) ---
+max_records: 200
+max_record_chars: 8000
+max_control_char_ratio: 0.01
+max_replacement_char_ratio: 0.005
+min_readable_char_ratio: 0.80
+
+# --- Provenance / quote contract ---
+# Lower bound exists so verbatim matching cannot be vacuous while still accepting
+# short Japanese technical fragments observed in live-check records.
+min_quote_chars: 8
+# Upper bound exists so the LLM cannot echo the record body wholesale into the output
+# through a "quote" field. Exceeding it drops the offending LLM-derived element.
+max_quote_chars: 300
+max_question_chars: 120
+max_hypothesis_chars: 160
+
+# --- Candidate causes (enumerated, never asserted) ---
+# The agent lists possible causes so the receiving operator knows what to check next, but it
+# never asserts one. Assertion is prevented structurally, not by word filtering: status is a
+# single-valued enum, there is no rank/confidence field anywhere in the output allowlist, the
+# ordering is fixed deterministically by Stage 4, and every candidate must carry evidence and
+# a confirmation question. See docs/02_design.md "candidate_causes".
+max_candidate_causes: 5
+# Fixed wording attached to the candidate list. The LLM never writes this — S-3 checks the
+# emitted value for exact equality with this constant.
+candidate_causes_disclaimer: "以下は確認の出発点として列挙した候補であり、原因の推定結果ではありません。順位は付いていません。各候補は記載の根拠と確認事項に基づいて担当者が判断してください。"
+
+# --- Stage 1 deterministic extraction ---
+# A record becomes a completed check only when a timestamp, a target identifier and one of
+# these action markers co-occur in the SAME record. Calibrated per adopter at onboarding.
+check_action_markers:
+  - "実施"
+  - "切り戻し"
+  - "復旧確認"
+  - "試験"
+  - "疎通確認"
+  - "設定変更"
+  - "rollback"
+  - "test"
+  - "verified"
+
+# --- Corroboration grounding gate ---
+# Route (c) of the grounding gate: a check recorded within this many minutes of the
+# assertion's source record counts as time co-reference.
+corroboration_window_minutes: 120
+
+# --- Retrieval ---
+recall_top_k: 5
+
+# --- Transient payload store (record bodies are never placed in State) ---
+payload_ttl_s: 900
